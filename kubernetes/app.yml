@@ -17,11 +17,13 @@ parameters:
     default:
       environment: null
       namespace: null
+      healthcheck: null
   - name: production
     type: object
     default:
       environment: null
       namespace: null
+      healthcheck: null
 
 stages:
 - stage: build
@@ -58,6 +60,31 @@ stages:
                   manifests: $(Pipeline.Workspace)/manifests/*.yml
 
                   containers: ${{ parameters.containers }}
+          postRouteTraffic:
+            steps:
+              - ${{ if parameters.staging.healthcheck }}:
+                - pwsh: |
+                        $retries = 5
+                        $interval = 10
+
+                        while ($retries -gt 0) {
+                            $retries -= 1
+                            
+                            $resp = Invoke-WebRequest -Uri $env:endpoint -Method Get -SkipHttpErrorCheck
+                            Write-Host "Received HTTP ${resp.StatusCode} ${resp.StatusDescription} ($retries retries remaining)"
+                            Write-Host $resp.Content
+                            
+                            if (($resp.StatusCode -ge 200) -and ($resp.StatusCode -le 299)) {
+                                exit 0
+                            }
+                            
+                            Start-Sleep -Seconds $interval
+                        }
+
+                        exit 1
+
+                  env:
+                    endpoint: ${{ parameters.staging.healthcheck }}
 
 - stage: deploy_prod
   displayName: Deploy (Production)
@@ -81,3 +108,28 @@ stages:
                   namespace: ${{ parameters.production.namespace }}
                   manifests: $(Pipeline.Workspace)/manifests/*.yml
                   containers: ${{ parameters.containers }}
+          postRouteTraffic:
+            steps:
+              - ${{ if parameters.production.healthcheck }}:
+                - pwsh: |
+                        $retries = 5
+                        $interval = 10
+
+                        while ($retries -gt 0) {
+                            $retries -= 1
+                            
+                            $resp = Invoke-WebRequest -Uri $env:endpoint -Method Get -SkipHttpErrorCheck
+                            Write-Host "Received HTTP ${resp.StatusCode} ${resp.StatusDescription} ($retries retries remaining)"
+                            Write-Host $resp.Content
+                            
+                            if (($resp.StatusCode -ge 200) -and ($resp.StatusCode -le 299)) {
+                                exit 0
+                            }
+                            
+                            Start-Sleep -Seconds $interval
+                        }
+
+                        exit 1
+
+                  env:
+                    endpoint: ${{ parameters.production.healthcheck }}
