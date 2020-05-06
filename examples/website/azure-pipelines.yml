@@ -1,0 +1,47 @@
+trigger:
+- master
+
+variables:
+  image: hello-world
+  tag: $(Build.BuildId)
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      name: SierraSoftworks/devops-pipelines
+
+extends:
+  template: azurecdn/website.yml@templates
+  parameters:
+    build:
+      - job: build_website
+        displayName: Build Website
+        steps:
+        - pwsh: |
+            npm install
+            npm run build
+          displayName: Build
+        - publish: ./dist
+          artifact: website
+    pool:
+      vmImage: ubuntu-latest
+    
+    # Make sure this matches the name of your service connection
+    subscription: My Azure Subscription
+
+    # If you've got multiple resource groups, this should match the one used by your CDN profile.
+    resourcegroup: demo-website
+    cdn_profile: demo-cdn
+
+    staging:
+      environment: demo-dev
+      cdn_endpoint: demo-dev
+      artifact: website
+      storage: demostoragedev
+
+    production:
+      environment: demo-prod
+      cdn_endpoint: demo-prod
+      artifact: website
+      storage: demostorageprod

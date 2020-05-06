@@ -1,0 +1,159 @@
+parameters:
+  - name: build
+    type: jobList
+    default: []
+  - name: pool
+    type: object
+    default:
+      vmImage: ubuntu-latest
+  - name: subscription
+    type: string
+  - name: resourcegroup
+    type: string
+  - name: cdn_profile
+    type: string
+  - name: staging
+    type: object  
+    default:
+      environment: null
+      artifact: null
+      storage: null
+      container: $web
+      cdn_endpoint: null
+      healthcheck: null
+  - name: production
+    type: object  
+    default:
+      environment: null
+      artifact: null
+      storage: null
+      container: $web
+      cdn_endpoint: null
+      healthcheck: null
+
+stages:
+  - stage: build
+    displayName: Build
+    pool: ${{ parameters.pool }}
+    jobs:
+      - ${{ parameters.build }}
+
+  - stage: deploy_staging
+    displayName: Staging
+    pool: ${{ parameters.pool }}
+    dependsOn:
+      - build
+    jobs:
+      - deployment: deploy_staging
+        displayName: Deploy ${{ parameters.staging.artifact }}
+        environment: ${{ parameters.staging.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureFileCopy@4
+                  displayName: Upload to Storage
+                  inputs:
+                    sourcePath: '$(Pipeline.Workspace)/${{ parameters.staging.artifact }}'
+                    destination: AzureBlob
+                    containerName: ${{ coalesce(parameters.staging.container, '$web') }}
+                    azureSubscription: ${{ parameters.subscription }}
+                    storage: ${{ parameters.staging.storage }}
+                    sasTokenTimeOutInMinutes: 15
+            routeTraffic:
+              steps:
+                - ${{ if parameters.staging.cdn_endpoint }}:
+                  - task: PurgeAzureCDNEndpoint@2
+                    displayName: Purge Azure CDN
+                    inputs:
+                      ConnectedServiceNameSelector: ConnectedServiceNameARM
+                      ConnectedServiceNameARM: ${{ parameters.subscription }}
+                      ResourceGroupName: ${{ parameters.resourcegroup }}
+                      EndpointName: ${{ parameters.staging.cdn_endpoint }}
+                      ProfileName: ${{ parameters.cdn_profile }}
+                      PurgeContent: '/*'
+            postRouteTraffic:
+              steps:
+                - ${{ if parameters.staging.healthcheck }}:
+                  - pwsh: |
+                          $retries = 5
+                          $interval = 10
+
+                          while ($retries -gt 0) {
+                              $retries -= 1
+                              
+                              $resp = Invoke-WebRequest -Uri $env:endpoint -Method Get -SkipHttpErrorCheck
+                              Write-Host "Received HTTP ${resp.StatusCode} ${resp.StatusDescription} ($retries retries remaining)"
+                              Write-Host $resp.Content
+                              
+                              if (($resp.StatusCode -ge 200) -and ($resp.StatusCode -le 299)) {
+                                  exit 0
+                              }
+                              
+                              Start-Sleep -Seconds $interval
+                          }
+
+                          exit 1
+
+                    env:
+                      endpoint: ${{ parameters.staging.healthcheck }}
+
+  - stage: deploy_production
+    displayName: Production
+    pool: ${{ parameters.pool }}
+    dependsOn:
+      - build
+    jobs:
+      - deployment: deploy_production
+        displayName: Deploy ${{ parameters.production.artifact }}
+        environment: ${{ parameters.production.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureFileCopy@4
+                  displayName: Upload to Storage
+                  inputs:
+                    sourcePath: '$(Pipeline.Workspace)/${{ parameters.production.artifact }}'
+                    destination: AzureBlob
+                    containerName: ${{ coalesce(parameters.production.container, '$web') }}
+                    azureSubscription: ${{ parameters.subscription }}
+                    storage: ${{ parameters.production.storage }}
+                    sasTokenTimeOutInMinutes: 15
+            routeTraffic:
+              steps:
+                - ${{ if parameters.production.cdn_endpoint }}:
+                  - task: PurgeAzureCDNEndpoint@2
+                    displayName: Purge Azure CDN
+                    inputs:
+                      ConnectedServiceNameSelector: ConnectedServiceNameARM
+                      ConnectedServiceNameARM: ${{ parameters.subscription }}
+                      ResourceGroupName: ${{ parameters.resourcegroup }}
+                      EndpointName: ${{ parameters.production.cdn_endpoint }}
+                      ProfileName: ${{ parameters.cdn_profile }}
+                      PurgeContent: '/*'
+            postRouteTraffic:
+              steps:
+                - ${{ if parameters.production.healthcheck }}:
+                  - pwsh: |
+                          $retries = 5
+                          $interval = 10
+
+                          while ($retries -gt 0) {
+                              $retries -= 1
+                              
+                              $resp = Invoke-WebRequest -Uri $env:endpoint -Method Get -SkipHttpErrorCheck
+                              Write-Host "Received HTTP ${resp.StatusCode} ${resp.StatusDescription} ($retries retries remaining)"
+                              Write-Host $resp.Content
+                              
+                              if (($resp.StatusCode -ge 200) -and ($resp.StatusCode -le 299)) {
+                                  exit 0
+                              }
+                              
+                              Start-Sleep -Seconds $interval
+                          }
+
+                          exit 1
+
+                    env:
+                      endpoint: ${{ parameters.production.healthcheck }}
