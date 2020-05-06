@@ -1,0 +1,39 @@
+trigger:
+- master
+
+variables:
+  image: hello-world
+  tag: $(Build.BuildId)
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      name: SierraSoftworks/devops-pipelines
+
+extends:
+  template: kubernetes/app.yml@templates
+  parameters:
+    build:
+      - job: build_docker
+        displayName: Build Docker Image
+        steps:
+        - task: Docker@2
+          displayName: Build Docker Image
+          inputs:
+            command: buildAndPush
+            dockerfile: 'Dockerfile'
+            containerRegistry: Docker Hub
+            repository: $(image)
+            tags: |
+              latest
+              $(tag)
+    manifests: ./.deploy
+    containers: |
+      $(image):$(tag)
+    staging:
+      namespace: demo-dev
+      environment: demo-dev.demo-dev
+    production:
+      namespace: demo-prod
+      environment: demo-prod.demo-prod

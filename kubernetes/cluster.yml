@@ -1,0 +1,108 @@
+parameters:
+  - name: manifests
+    type: string
+    default: ./manifests
+  - name: kubernetes
+    type: object
+    default:
+      subscription: ""
+      cluster: ""
+      resourcegroup: ""
+
+  - name: bootstrap
+    type: object
+    default: []
+  - name: staging
+    type: object
+    default: []
+  - name: production
+    type: object
+    default: []
+
+stages:
+  - stage: build
+    displayName: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    jobs:
+      - job: build_manifests
+        displayName: Build Manifests
+        steps:
+          - publish: ${{ parameters.manifests }}
+            artifact: manifests
+  
+  - stage: deploy_bootstrap
+    displayName: Bootstrap
+    dependsOn:
+      - build
+    pool:
+      vmImage: 'ubuntu-latest'
+    jobs:
+    - ${{ each step in parameters.bootstrap }}:
+      - deployment: deploy_bootstrap_${{ step.id }}
+        displayName: ${{ step.displayName }}
+        environment: ${{ step.environment }}.${{ step.namespace }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: Kubernetes@1
+                  name: deploy
+                  displayName: Deploy
+                  inputs:
+                    connectionType: Azure Resource Manager
+                    azureSubscriptionEndpoint: ${{ parameters.kubernetes.subscription }}
+                    azureResourceGroup: ${{ parameters.kubernetes.resourcegroup }}
+                    kubernetesCluster: ${{ parameters.kubernetes.cluster }}
+                    useClusterAdmin: true
+                    command: apply
+                    namespace: ${{ step.namespace }}
+                    arguments: "-f $(Pipeline.Workspace)/manifests/bootstrap/${{ step.component }}/"
+
+  - stage: deploy_staging
+    displayName: Staging
+    dependsOn:
+      - build
+      - deploy_bootstrap
+    pool:
+      vmImage: 'ubuntu-latest'
+    jobs:
+    - ${{ each step in parameters.staging }}:
+      - deployment: deploy_staging_${{ step.id }}
+        displayName: ${{ step.displayName }}
+        environment: ${{ step.environment }}.${{ step.namespace }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@0
+                  name: deploy
+                  displayName: Deploy
+                  inputs:
+                    action: deploy
+                    namespace: ${{ step.namespace }}
+                    manifests: $(Pipeline.Workspace)/manifests/staging/${{ step.component }}/*.yaml
+
+  - stage: deploy_production
+    displayName: Production
+    dependsOn:
+      - build
+      - deploy_staging
+    pool:
+      vmImage: 'ubuntu-latest'
+    jobs:
+    - ${{ each step in parameters.production }}:
+      - deployment: deploy_production_${{ step.id }}
+        displayName: ${{ step.displayName }}
+        environment: ${{ step.environment }}.${{ step.namespace }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: KubernetesManifest@0
+                  name: deploy
+                  displayName: Deploy
+                  inputs:
+                    action: deploy
+                    namespace: ${{ step.namespace }}
+                    manifests: $(Pipeline.Workspace)/manifests/production/${{ step.component }}/*.yaml

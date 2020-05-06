@@ -1,0 +1,80 @@
+parameters:
+  - name: build
+    type: jobList
+    default: []
+  - name: pool
+    type: object
+    default:
+      vmImage: ubuntu-latest
+  - name: manifests
+    type: string
+    default: ./manifests
+  - name: containers
+    type: string
+    default: ""
+  - name: staging
+    type: object
+    default:
+      environment: null
+      namespace: null
+  - name: production
+    type: object
+    default:
+      environment: null
+      namespace: null
+
+stages:
+- stage: build
+  displayName: Build
+  pool: ${{ parameters.pool }}
+  jobs:  
+    - ${{ parameters.build }}
+
+    - publish: ${{ parameters.manifests }}
+      artifact: manifests
+
+- stage: deploy_staging
+  displayName: Deploy (Staging)
+  pool: ${{ parameters.pool }}
+  dependsOn:
+    - build
+  jobs:
+    - deployment: deploy_staging
+      displayName: Deploy Staging
+      environment: ${{ parameters.staging.environment }}
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: KubernetesManifest@0
+                name: deploy
+                displayName: Deploy 
+                inputs:
+                  action: deploy
+                  namespace: ${{ parameters.staging.namespace }}
+                  manifests: $(Pipeline.Workspace)/manifests/*.yml
+
+                  containers: ${{ parameters.container }}
+
+- stage: deploy_prod
+  displayName: Deploy (Production)
+  pool: ${{ parameters.pool }}
+  dependsOn:
+    - build
+    - deploy_staging
+  jobs:
+    - deployment: deploy_prod
+      displayName: Deploy Production
+      environment: ${{ parameters.production.environment }}
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: KubernetesManifest@0
+                name: deploy
+                displayName: Deploy 
+                inputs:
+                  action: deploy
+                  namespace: ${{ parameters.production.namespace }}
+                  manifests: $(Pipeline.Workspace)/manifests/*.yml
+                  containers: ${{ parameters.container }}
