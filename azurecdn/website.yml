@@ -103,6 +103,7 @@ stages:
     pool: ${{ parameters.pool }}
     dependsOn:
       - build
+      - deploy_staging
     jobs:
       - deployment: deploy_production
         displayName: Deploy ${{ parameters.production.artifact }}
