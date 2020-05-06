@@ -30,8 +30,11 @@ stages:
   jobs:  
     - ${{ parameters.build }}
 
-    - publish: ${{ parameters.manifests }}
-      artifact: manifests
+    - job: package_manifests
+      displayName: Package Manifests
+      steps:
+        - publish: ${{ parameters.manifests }}
+          artifact: manifests
 
 - stage: deploy_staging
   displayName: Deploy (Staging)
