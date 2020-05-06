@@ -57,7 +57,7 @@ stages:
                   namespace: ${{ parameters.staging.namespace }}
                   manifests: $(Pipeline.Workspace)/manifests/*.yml
 
-                  containers: ${{ parameters.container }}
+                  containers: ${{ parameters.containers }}
 
 - stage: deploy_prod
   displayName: Deploy (Production)
@@ -80,4 +80,4 @@ stages:
                   action: deploy
                   namespace: ${{ parameters.production.namespace }}
                   manifests: $(Pipeline.Workspace)/manifests/*.yml
-                  containers: ${{ parameters.container }}
+                  containers: ${{ parameters.containers }}
