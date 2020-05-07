@@ -41,6 +41,7 @@ stages:
   - stage: deploy_staging
     displayName: Staging
     pool: ${{ parameters.pool }}
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
     dependsOn:
       - build
     jobs:
@@ -101,6 +102,7 @@ stages:
   - stage: deploy_production
     displayName: Production
     pool: ${{ parameters.pool }}
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
     dependsOn:
       - build
       - deploy_staging
