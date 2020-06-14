@@ -102,7 +102,7 @@ stages:
   - stage: deploy_production
     displayName: Production
     pool: ${{ parameters.pool }}
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     dependsOn:
       - build
       - deploy_staging
